@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Excel Data Comparison Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Universal Excel Data Comparison Tool</h1>
+            <p>Upload your source data and compare it with multiple Excel files automatically</p>
+            <p><strong>ANDREW WAMALA KYANJO © 2025</strong></p>
+        </div>
+
+        <div class="content">
+            <!-- Step 1: Upload Source File -->
+            <div class="step">
+                <div class="step-header">
+                    📂 Step 1: Upload Source Data File
+                </div>
+                <div class="step-content">
+                    <div class="upload-card">
+                        <label for="sourceFile"><strong>Select your main source Excel file:</strong></label>
+                        <input type="file" id="sourceFile" class="file-input" accept=".xlsx,.xls" />
+                        <div id="sourceStatus" class="file-status"></div>
+                    </div>
+
+                    <div id="sourceColumns" class="columns-display">
+                        <h4>📋 Detected Columns in Source File:</h4>
+                        <div id="sourceColumnsGrid" class="columns-grid"></div>
+                        <p style="margin-top: 15px; color: #666; font-style: italic;">
+                            ℹ️ Comparison files must contain these columns (additional columns are allowed)
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Upload Comparison Files -->
+            <div class="step" id="comparisonStep" style="display: none;">
+                <div class="step-header">
+                    🔄 Step 2: Upload Comparison Files
+                </div>
+                <div class="step-content">
+                    <p style="margin-bottom: 20px; color: #666;">
+                        Upload Excel files to compare with your source data. Each file should contain the same columns
+                        as your source file.
+                    </p>
+
+                    <div id="comparisonFiles" class="comparison-files">
+                        <!-- Comparison files will be added here dynamically -->
+                    </div>
+
+                    <button id="addFileBtn" class="add-file-btn">➕ Add Comparison File</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Compare Data -->
+            <div class="step" id="compareStep" style="display: none;">
+                <div class="step-header">
+                    ⚡ Step 3: Run Comparison
+                </div>
+                <div class="step-content">
+                    <p style="margin-bottom: 20px; color: #666;">
+                        Ready to compare your data! Click the button below to start the comparison process.
+                    </p>
+                    <button id="compareBtn" class="compare-btn" disabled>🚀 Start Comparison</button>
+                </div>
+            </div>
+
+            <div class="error-message" id="errorMessage"></div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing your data...</p>
+            </div>
+
+            <!-- Results Section -->
+            <div class="results-section" id="resultsSection">
+                <div class="results-header">
+                    <h2>📊 Comparison Results</h2>
+                </div>
+
+                <div id="resultsContainer">
+                    <!-- Results for each comparison file will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sourceData = null;
+        let sourceColumns = [];
+        let comparisonFiles = [];
+        let comparisonResults = [];
+        let fileCounter = 0;
+
+        // Initialize event listeners
+        document.getElementById('sourceFile').addEventListener('change', handleSourceFileUpload);
+        document.getElementById('addFileBtn').addEventListener('click', addComparisonFile);
+        document.getElementById('compareBtn').addEventListener('click', runComparison);
+
+        function handleSourceFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const data = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (data.length === 0) {
+                        throw new Error('No data found in the Excel file');
+                    }
+
+                    sourceData = data;
+                    sourceColumns = Object.keys(data[0]);
+
+                    updateStatus('sourceStatus', `✅ Loaded ${data.length} records with ${sourceColumns.length} columns`, 'success');
+                    displaySourceColumns();
+
+                    document.getElementById('comparisonStep').style.display = 'block';
+                    hideError();
+                } catch (error) {
+                    updateStatus('sourceStatus', '❌ Error reading file', 'error');
+                    showError('Error reading source file: ' + error.message);
+                }
+            };
+            reader.readAsBinaryString(file);
+        }
+
+        function displaySourceColumns() {
+            const columnsGrid = document.getElementById('sourceColumnsGrid');
+            columnsGrid.innerHTML = '';
+
+            sourceColumns.forEach(column => {
+                const columnItem = document.createElement('div');
+                columnItem.className = 'column-item';
+                columnItem.textContent = column;
+                columnsGrid.appendChild(columnItem);
+            });
+
+            document.getElementById('sourceColumns').style.display = 'block';
+        }
+
+        function addComparisonFile() {
+            fileCounter++;
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'comparison-file';
+            fileDiv.id = `comparisonFile_${fileCounter}`;
+
+            fileDiv.innerHTML = `
+                <div class="comparison-file-header">
+                    <span class="file-number">File ${fileCounter}</span>
+                    <button class="remove-file" onclick="removeComparisonFile(${fileCounter})">Remove</button>
+                </div>
+                <input type="file" id="compFile_${fileCounter}" class="file-input" accept=".xlsx,.xls" />
+                <div id="compStatus_${fileCounter}" class="file-status"></div>
+                <div id="validation_${fileCounter}" class="column-validation"></div>
+            `;
+
+            document.getElementById('comparisonFiles').appendChild(fileDiv);
+
+            // Add event listener for the new file input
+            document.getElementById(`compFile_${fileCounter}`).addEventListener('change', (e) => handleComparisonFileUpload(e, fileCounter));
+        }
+
+        function removeComparisonFile(fileId) {
+            const fileDiv = document.getElementById(`comparisonFile_${fileId}`);
+            if (fileDiv) {
+                fileDiv.remove();
+                // Remove from comparisonFiles array
+                comparisonFiles = comparisonFiles.filter(file => file.id !== fileId);
+                checkComparisonReady();
+            }
+        }
+
+        function handleComparisonFileUpload(event, fileId) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const data = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (data.length === 0) {
+                        throw new Error('No data found in the Excel file');
+                    }
+
+                    const fileColumns = Object.keys(data[0]);
+                    const validation = validateColumns(fileColumns);
+
+                    // Update or add to comparison files
+                    const existingIndex = comparisonFiles.findIndex(f => f.id === fileId);
+                    const fileData = {
+                        id: fileId,
+                        name: file.name,
+                        data: data,
+                        columns: fileColumns,
+                        valid: validation.valid
+                    };
+
+                    if (existingIndex >= 0) {
+                        comparisonFiles[existingIndex] = fileData;
+                    } else {
+                        comparisonFiles.push(fileData);
+                    }
+
+                    updateStatus(`compStatus_${fileId}`, `✅ Loaded ${data.length} records with ${fileColumns.length} columns`, 'success');
+                    displayValidation(fileId, validation);
+                    checkComparisonReady();
+                    hideError();
+                } catch (error) {
+                    updateStatus(`compStatus_${fileId}`, '❌ Error reading file', 'error');
+                    showError('Error reading comparison file: ' + error.message);
+                }
+            };
+            reader.readAsBinaryString(file);
+        }
+
+        function validateColumns(fileColumns) {
+            const missingColumns = [];
+            const presentColumns = [];
+
+            sourceColumns.forEach(sourceCol => {
+                const found = fileColumns.some(fileCol =>
+                    sourceCol.toLowerCase().trim() === fileCol.toLowerCase().trim()
+                );
+
+                if (found) {
+                    presentColumns.push(sourceCol);
+                } else {
+                    missingColumns.push(sourceCol);
+                }
+            });
+
+            return {
+                valid: missingColumns.length === 0,
+                missing: missingColumns,
+                present: presentColumns,
+                extra: fileColumns.filter(fileCol =>
+                    !sourceColumns.some(sourceCol =>
+                        sourceCol.toLowerCase().trim() === fileCol.toLowerCase().trim()
+                    )
+                )
+            };
+        }
+
+        function displayValidation(fileId, validation) {
+            const validationDiv = document.getElementById(`validation_${fileId}`);
+            validationDiv.innerHTML = '';
+
+            let html = '<h5>Column Validation:</h5>';
+
+            validation.present.forEach(col => {
+                html += `
+                    <div class="validation-item">
+                        <span class="validation-icon success">✅</span>
+                        <span>${col} - Found</span>
+                    </div>
+                `;
+            });
+
+            validation.missing.forEach(col => {
+                html += `
+                    <div class="validation-item">
+                        <span class="validation-icon error">❌</span>
+                        <span>${col} - Missing</span>
+                    </div>
+                `;
+            });
+
+            if (validation.extra.length > 0) {
+                html += '<div style="margin-top: 10px; font-size: 0.9rem; color: #666;">Additional columns found: ' + validation.extra.join(', ') + '</div>';
+            }
+
+            validationDiv.innerHTML = html;
+            validationDiv.style.display = 'block';
+        }
+
+        function checkComparisonReady() {
+            const validFiles = comparisonFiles.filter(file => file.valid);
+            const compareBtn = document.getElementById('compareBtn');
+
+            if (sourceData && validFiles.length > 0) {
+                compareBtn.disabled = false;
+                document.getElementById('compareStep').style.display = 'block';
+            } else {
+                compareBtn.disabled = true;
+            }
+        }
+
+        function runComparison() {
+            hideError();
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+
+            setTimeout(() => {
+                try {
+                    comparisonResults = [];
+
+                    comparisonFiles.filter(file => file.valid).forEach(compFile => {
+                        const result = compareDatasets(sourceData, compFile.data, compFile.name);
+                        comparisonResults.push(result);
+                    });
+
+                    displayResults();
+                } catch (error) {
+                    showError('Error during comparison: ' + error.message);
+                } finally {
+                    document.getElementById('loading').style.display = 'none';
+                }
+            }, 1000);
+        }
+
+        function compareDatasets(sourceData, comparisonData, fileName) {
+            const matches = [];
+            const unmatched = [];
+
+            sourceData.forEach((sourceRecord, index) => {
+                let matchFound = false;
+
+                // Try to find a match in comparison data
+                for (let compRecord of comparisonData) {
+                    let isMatch = true;
+
+                    // Compare all source columns
+                    for (let column of sourceColumns) {
+                        const sourceValue = normalizeValue(sourceRecord[column]);
+                        const compValue = normalizeValue(findColumnValue(compRecord, column));
+
+                        if (sourceValue !== compValue) {
+                            isMatch = false;
+                            break;
+                        }
+                    }
+
+                    if (isMatch) {
+                        matchFound = true;
+                        break;
+                    }
+                }
+
+                const recordWithStatus = { ...sourceRecord, Status: matchFound ? 'MATCHED' : 'UNMATCHED', RowIndex: index + 1 };
+
+                if (matchFound) {
+                    matches.push(recordWithStatus);
+                } else {
+                    unmatched.push(recordWithStatus);
+                }
+            });
+
+            return {
+                fileName: fileName,
+                totalRecords: sourceData.length,
+                matchedCount: matches.length,
+                unmatchedCount: unmatched.length,
+                matches: matches,
+                unmatched: unmatched,
+                allResults: [...matches, ...unmatched]
+            };
+        }
+
+        function findColumnValue(record, targetColumn) {
+            // Find column value with case-insensitive matching
+            const key = Object.keys(record).find(k =>
+                k.toLowerCase().trim() === targetColumn.toLowerCase().trim()
+            );
+            return key ? record[key] : null;
+        }
+
+        function normalizeValue(value) {
+            if (value === null || value === undefined) return '';
+            if (typeof value === 'number') return value.toString();
+            return value.toString().toLowerCase().trim();
+        }
+
+        function displayResults() {
+            const resultsContainer = document.getElementById('resultsContainer');
+            resultsContainer.innerHTML = '';
+
+            comparisonResults.forEach((result, index) => {
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'file-results';
+
+                resultDiv.innerHTML = `
+                    <div class="file-results-header">
+                        📄 ${result.fileName}
+                    </div>
+                    
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-number total">${result.totalRecords}</div>
+                            <div>Total Records</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number matched">${result.matchedCount}</div>
+                            <div>Matched</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number unmatched">${result.unmatchedCount}</div>
+                            <div>Unmatched</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number">${((result.matchedCount / result.totalRecords) * 100).toFixed(1)}%</div>
+                            <div>Match Rate</div>
+                        </div>
+                    </div>
+                    
+                    <button class="download-btn" onclick="downloadResults(${index})">📥 Download Results</button>
+                    
+                    <div class="table-container">
+                        <table class="results-table">
+                            <thead>
+                                <tr>
+                                    <th>Row #</th>
+                                    ${sourceColumns.map(col => `<th>${col}</th>`).join('')}
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${result.allResults.map(record => `
+                                    <tr>
+                                        <td>${record.RowIndex}</td>
+                                        ${sourceColumns.map(col => `<td>${record[col] || 'N/A'}</td>`).join('')}
+                                        <td><span class="status-${record.Status.toLowerCase()}">${record.Status}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                resultsContainer.appendChild(resultDiv);
+            });
+
+            document.getElementById('resultsSection').style.display = 'block';
+        }
+
+        function downloadResults(resultIndex) {
+            if (!comparisonResults[resultIndex]) return;
+
+            const result = comparisonResults[resultIndex];
+            const ws = XLSX.utils.json_to_sheet(result.allResults);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Comparison Results");
+
+            const fileName = `comparison_${result.fileName.replace(/\.[^/.]+$/, "")}_results.xlsx`;
+            XLSX.writeFile(wb, fileName);
+        }
+
+        function updateStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `file-status ${type}`;
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        // Initialize with first comparison file
+        addComparisonFile();
+    </script>
+</body>
+
+</html>

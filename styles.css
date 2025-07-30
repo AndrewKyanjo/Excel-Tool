@@ -63,6 +63,61 @@ body {
     padding: 25px;
 }
 
+.matching-options {
+    background: #e8f5e8;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #c3e6c3;
+}
+
+.matching-mode {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.matching-mode input[type="radio"] {
+    margin-right: 10px;
+    transform: scale(1.2);
+}
+
+.matching-mode label {
+    font-weight: 500;
+    cursor: pointer;
+    flex: 1;
+}
+
+.mode-description {
+    font-size: 0.9rem;
+    color: #666;
+    margin-left: 25px;
+    margin-top: 5px;
+}
+
+.date-handling {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.status-partial {
+    background: #fff3cd;
+    color: #856404;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+.partial-details {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 2px;
+}
+
 .upload-card {
     background: #f8f9fa;
     border-radius: 10px;
